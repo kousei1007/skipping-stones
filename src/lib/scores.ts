@@ -28,10 +28,13 @@ export const isOnline = () => getSupabase() !== null;
 /** オンライン記録用の署名付きプレイ情報（端末保存のときは token が null） */
 export interface PlaySession extends PlaySeeds {
   token: string | null;
+  /** オンラインで遊べなかった理由（サーバーに断られたとき） */
+  notice?: string;
 }
 
 /** ステージに入るときに、サーバーから河原・天候の種をもらう。使えないときは端末だけで遊ぶ */
 export async function startPlay(stageId: StageId): Promise<PlaySession> {
+  let notice: string | undefined;
   if (isOnline()) {
     try {
       const res = await fetch("/api/session", {
@@ -40,32 +43,35 @@ export async function startPlay(stageId: StageId): Promise<PlaySession> {
         body: JSON.stringify({ stageId }),
       });
       if (res.ok) return (await res.json()) as PlaySession;
+      if (res.status === 429) {
+        const { error } = (await res.json().catch(() => ({}))) as { error?: string };
+        notice = `${error ?? "混み合っています"}（今回の記録は端末に保存されます）`;
+      }
     } catch {
       // 通信できないときは端末保存に切り替える
     }
   }
-  return { token: null, fieldSeed: randomSeed(), condSeed: randomSeed() };
+  return { token: null, fieldSeed: randomSeed(), condSeed: randomSeed(), notice };
 }
 
 /**
  * 投げた瞬間に、投擲の乱数の種（当たり外れ・炎・ブレ）をサーバーに決めてもらう（同じ投擲につき 1 回だけ）。
- * 使えないときは null（その投擲はオンラインに記録しない）
+ * 断られたときは理由を返す（その投擲はオンラインに記録しない）
  */
-export async function fetchThrowSeed(token: string, submission: ThrowSubmission): Promise<number | null> {
+export async function fetchThrowSeed(token: string, submission: ThrowSubmission): Promise<{ seed: number } | { error: string }> {
   try {
     const res = await fetch("/api/stone-luck", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, throw: submission }),
     });
-    if (res.ok) {
-      const { seed } = (await res.json()) as { seed?: unknown };
-      if (typeof seed === "number") return seed;
-    }
+    const { seed, error } = (await res.json().catch(() => ({}))) as { seed?: unknown; error?: unknown };
+    if (res.ok && typeof seed === "number") return { seed };
+    if (typeof error === "string") return { error: `${error}（この投擲はオンラインに記録されません）` };
   } catch {
     // 通信できないときは端末だけで投げる
   }
-  return null;
+  return { error: "通信できなかったため、この投擲はオンラインに記録されません" };
 }
 
 /**

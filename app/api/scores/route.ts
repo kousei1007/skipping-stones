@@ -1,13 +1,13 @@
 import { getStage } from "@/game/stages";
-import { entersTopRanking, HIDDEN_SCORE_IDS, isRankingClosed, RANKING_SINCE, RANKING_SIZE, replayThrow, validateSubmission, type ThrowSubmission } from "@/game/verify";
-import { secretThrowSeed, verifyPlayToken } from "@/lib/playToken";
+import { entersTopRanking, HIDDEN_SCORE_IDS, isRankingClosed, RANKING_SINCE, RANKING_SIZE, type ThrowSubmission } from "@/game/verify";
+import { verifyPlayToken } from "@/lib/playToken";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
 /**
- * 記録を受け付ける。ブラウザからは「どう投げたか」だけを受け取り、
- * 跳ねた回数はサーバーで投擲をやり直して求める（送られてきた回数は使わない）。
+ * 記録を受け付ける。ブラウザからは「何投目か」だけを使い、
+ * 跳ねた回数は投げた瞬間に /api/stone-luck が計算して保存したものを使う（送られてきた回数や投げ方は使わない）。
  */
 export async function POST(request: Request) {
   let body: { token?: unknown; playerName?: unknown; throw?: ThrowSubmission };
@@ -27,14 +27,24 @@ export async function POST(request: Request) {
   if (name.length < 1 || name.length > 20) return Response.json({ error: "名前は1〜20文字で入力してください" }, { status: 400 });
 
   const stage = getStage(claims.stage);
-  const sub = body.throw;
-  const invalid = sub ? validateSubmission(stage, sub) : "投擲の情報がありません";
-  if (invalid || !sub) return Response.json({ error: invalid }, { status: 400 });
+  const throwIndex = body.throw?.throwIndex;
+  if (!Number.isInteger(throwIndex) || (throwIndex as number) < 0) return Response.json({ error: "投擲番号が不正です" }, { status: 400 });
 
   const supabase = getSupabaseAdmin();
   if (!supabase) return Response.json({ error: "オンラインランキングは無効です" }, { status: 503 });
 
-  const { bounces, distance, weather } = replayThrow(stage, claims, sub, secretThrowSeed(claims, sub));
+  const { data: reveal, error: revealError } = await supabase
+    .from("throw_reveals")
+    .select("stone_serial, bounces, distance, weather")
+    .eq("session_id", claims.sid)
+    .eq("throw_index", throwIndex)
+    .maybeSingle();
+  if (revealError) {
+    console.error("throw reveal fetch failed", revealError.message);
+    return Response.json({ error: "記録に失敗しました" }, { status: 500 });
+  }
+  if (!reveal || reveal.bounces === null) return Response.json({ error: "この投擲は記録できません" }, { status: 404 });
+  const { bounces, distance, weather } = reveal as { bounces: number; distance: number; weather: string };
 
   // 上位に入らない記録は保存しない（画面で隠すだけでなく、サーバーでも確かめる）
   const { data: top, error: topError } = await supabase
@@ -69,8 +79,8 @@ export async function POST(request: Request) {
     distance: Math.round(distance * 10) / 10,
     weather,
     session_id: claims.sid,
-    throw_index: sub.throwIndex,
-    stone_serial: sub.stoneSerial,
+    throw_index: throwIndex,
+    stone_serial: reveal.stone_serial,
   });
   if (error) {
     // 同じ投擲・同じ石の二重登録はデータベースの一意制約で弾く

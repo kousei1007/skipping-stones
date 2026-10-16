@@ -33,13 +33,13 @@ npx tsc src/game/physics.ts src/game/conditions.ts --outDir <tmp> --module commo
 - `src/three/` — three.js の描画。`GameScene.ts` がシーン全体とカメラを管理し、React からは `setStage` / `setStones` / `setMode` / `setThrow` / `startFlight` で操作する
 - `src/components/` — UI。`GameRoot.tsx` が画面の状態遷移（title → select → position → aim → power → flight → result）を持つ
 - `src/lib/` — スコア保存。`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` があれば Supabase、なければ localStorage。`playToken.ts`・`supabaseAdmin.ts` はサーバー専用
-- `app/api/session`・`app/api/stone-luck`・`app/api/scores` — ランキングの不正対策。サーバーがプレイの種（河原・天候）に署名して発行し、記録時は投げ方だけを受け取って `src/game/verify.ts` の `replayThrow` で跳ねた回数を計算し直してから書き込む。投擲の乱数の種は `stone-luck` が投げた瞬間に秘密の鍵から決めて返す（同じ投擲には 1 回だけ。`throw_reveals` に記録）。名前は同じプレイの中では最初に記録したものに固定（端末でも一度記録した名前は変えられない）
-- `supabase/migrations/` — `scores` テーブルと RLS（閲覧は誰でも可。書き込みはサーバーの service_role だけ）
+- `app/api/session`・`app/api/stone-luck`・`app/api/scores` — ランキングの不正対策。サーバーがプレイの種（河原・天候）に署名して発行し、`play_sessions` に記録する。投げた瞬間に `stone-luck` が投げ方を受け取り、`src/game/verify.ts` の `replayThrow` で跳ねた回数を計算して `throw_reveals` に保存してから、秘密の鍵で決めた投擲の乱数の種を返す。`scores` は保存済みの結果だけを書き込む（投げ方を変えて引き直せない）。投擲番号は前にしか進まず、前の投擲の飛行時間 + 2.5 秒は次を受け付けない。接続元（IP の鍵付きハッシュ）ごとにプレイ発行と投擲の回数を制限する。名前は同じプレイの中では最初に記録したものに固定（端末でも一度記録した名前は変えられない）
+- `supabase/migrations/` — `scores`・`throw_reveals`・`play_sessions` と RLS（`scores` は表示用の列だけ誰でも閲覧可。書き込みはサーバーの service_role だけ）
 
 ## 仕様上の数値
 
 - ゲージは 1 回最大 1000、3 回合計で最大 3000（`MAX_GAUGE_PER_ROUND`）。数値はユーザーに見せない
-- 石の追加は「追加後に上限を超えるなら不可」（ちょうど上限は可）。追加は 100 個単位（`addBatch`）で、今いる場所の周り（±8m）の隙間に置く
+- 石の追加は「追加後に上限を超えるなら不可」（ちょうど上限は可）。追加は 100 個単位（`addBatch`）で、今いる場所の周り（±8m）の隙間に置く。追加した石の通し番号は `ADD_SERIAL_BASE` から追加した順に続ける（サーバーは「上限 − 初期の数 + 投げた数」を超える番号を受け付けない）
 - 石は河原の上流〜下流（`MOVE_RANGE` 全体）に地面が見えないほど敷き詰める（格子 `STONE_FIELD.grid`、1 万個以上）。石選びでは ← → / A D / 画面のボタンを押している間だけ歩き（Shift で走る）、カメラは `throwX` の位置を映す
 - 河原の石は 1 個ずつのメッシュにせず、形の種類（12 種）× 8m 区画ごとの `InstancedMesh` で描く。拾った石だけ `buildStoneGeometry` で正確な形を作る
 - ゲージはクリック／キーを押したイベントの時刻で値を決め、表示もその場で固定する

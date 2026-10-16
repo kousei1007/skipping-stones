@@ -68,8 +68,8 @@ export default function GameRoot() {
   const [toast, setToast] = useState<string | null>(null);
 
   const onFlightEndRef = useRef<() => void>(() => {});
-  // 今のプレイの種（オンラインならサーバーの署名付き）と、何投目・何回追加したか
-  const playRef = useRef<(PlaySession & { throwIndex: number; addCount: number }) | null>(null);
+  // 今のプレイの種（オンラインならサーバーの署名付き）と、何投目・何個追加したか
+  const playRef = useRef<(PlaySession & { throwIndex: number; addedCount: number }) | null>(null);
   const lastThrowRef = useRef<ThrowSubmission | null>(null);
   /** 今の投擲の乱数をサーバーが決めたか（決めていない投擲はオンラインに記録しない） */
   const serverLuckRef = useRef(false);
@@ -159,7 +159,7 @@ export default function GameRoot() {
   const enterStage = useCallback((id: StageId) => {
     setPhase("loading");
     startPlay(id).then((play) => window.setTimeout(() => {
-      playRef.current = { ...play, throwIndex: 0, addCount: 0 };
+      playRef.current = { ...play, throwIndex: 0, addedCount: 0 };
       const scene = sceneRef.current;
       const st = getStage(id);
       const c = conditionsAt(st, play.condSeed, 0);
@@ -183,6 +183,7 @@ export default function GameRoot() {
       setYaw(0);
       setElevation(DEFAULT_ELEVATION);
       setSessionBest(0);
+      if (play.notice) setToast(play.notice);
       setPhase("select");
     }, 60));
   }, []);
@@ -196,9 +197,9 @@ export default function GameRoot() {
   const addStones = useCallback(() => {
     const play = playRef.current;
     if (!play || !canAddStones(stage, stones.length)) return;
-    // 今いる場所の周りに追加する（石の通し番号は追加ごとに別の範囲）
-    const added = spawnStones(stage, stage.addBatch, stones, play.fieldSeed, throwX, ADD_SERIAL_BASE + play.addCount * stage.addBatch);
-    play.addCount += 1;
+    // 今いる場所の周りに追加する（石の通し番号は追加した順に続ける。サーバーはこの範囲を超える番号を受け付けない）
+    const added = spawnStones(stage, stage.addBatch, stones, play.fieldSeed, throwX, ADD_SERIAL_BASE + play.addedCount);
+    play.addedCount += added.length;
     if (added.length === 0) {
       setToast("河原に石を置く場所がありません");
       return;
@@ -231,8 +232,10 @@ export default function GameRoot() {
       };
       lastThrowRef.current = submission;
       // 投擲の乱数（石の当たり外れ・炎・ブレ）は、オンラインでは投げた瞬間にサーバーが決める（ブラウザでは前もって計算できない）
-      const serverSeed = play.token ? await fetchThrowSeed(play.token, submission) : null;
+      const luck = play.token ? await fetchThrowSeed(play.token, submission) : null;
+      const serverSeed = luck && "seed" in luck ? luck.seed : null;
       serverLuckRef.current = serverSeed !== null;
+      if (luck && "error" in luck) setToast(luck.error);
       const res = simulateThrow({
         stone: selected,
         conditions: cond,

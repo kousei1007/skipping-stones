@@ -82,10 +82,12 @@ const isNum = (v: unknown, min: number, max: number): v is number =>
 
 /** 送られてきた投擲が、ゲーム内で実際に可能な範囲か */
 export function validateSubmission(stage: StageDef, s: ThrowSubmission): string | null {
-  const serialOk =
-    isInt(s.stoneSerial, 0, stage.initialStones - 1) || isInt(s.stoneSerial, ADD_SERIAL_BASE, ADD_SERIAL_BASE + 10_000_000);
-  if (!serialOk) return "石が不正です";
   if (!isInt(s.throwIndex, 0, 100_000)) return "投擲番号が不正です";
+  // 河原の石は上限（maxStones）までしか増やせず、投げた石の分だけ追加できる。追加した石の通し番号は追加した順に続く
+  const maxAdded = stage.maxStones - stage.initialStones + s.throwIndex;
+  const serialOk =
+    isInt(s.stoneSerial, 0, stage.initialStones - 1) || isInt(s.stoneSerial, ADD_SERIAL_BASE, ADD_SERIAL_BASE + maxAdded - 1);
+  if (!serialOk) return "石が不正です";
   if (!isNum(s.originX, -MOVE_RANGE, MOVE_RANGE)) return "立ち位置が不正です";
   if (!isNum(s.elevationDeg, 0, THROW_LIMITS.elevationMax)) return "角度が不正です";
   if (!isNum(s.yawDeg, -THROW_LIMITS.yaw, THROW_LIMITS.yaw)) return "向きが不正です";
@@ -95,7 +97,12 @@ export function validateSubmission(stage: StageDef, s: ThrowSubmission): string 
 }
 
 /** 種と投げ方から投擲をやり直して、跳ねた回数を求める（ブラウザとサーバーで同じ計算）。seed は投擲の乱数の種（サーバーの鍵から決まる） */
-export function replayThrow(stage: StageDef, seeds: PlaySeeds, s: ThrowSubmission, seed: number): { bounces: number; distance: number; weather: Weather } {
+export function replayThrow(
+  stage: StageDef,
+  seeds: PlaySeeds,
+  s: ThrowSubmission,
+  seed: number,
+): { bounces: number; distance: number; weather: Weather; endT: number } {
   const conditions = conditionsAt(stage, seeds.condSeed, s.throwIndex);
   const result = simulateThrow({
     stone: stoneFromSerial(seeds.fieldSeed, s.stoneSerial),
@@ -107,5 +114,5 @@ export function replayThrow(stage: StageDef, seeds: PlaySeeds, s: ThrowSubmissio
     power: s.gauge.reduce((a, b) => a + b, 0),
     seed,
   });
-  return { bounces: result.bounces.length, distance: result.distance, weather: conditions.weather };
+  return { bounces: result.bounces.length, distance: result.distance, weather: conditions.weather, endT: result.endT };
 }

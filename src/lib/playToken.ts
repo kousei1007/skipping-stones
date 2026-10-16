@@ -47,6 +47,30 @@ export function secretThrowSeed(claims: PlayClaims, s: ThrowSubmission): number 
   return createHmac("sha256", secret() ?? "").update(`throw:${data}`).digest().readUInt32BE(0);
 }
 
+/** IPv6 は 1 つの契約に /56 以上がまるごと割り当てられることが多い（国内の固定回線など）ので、上位 56 ビットでまとめる */
+export function ipBucket(ip: string): string {
+  const v4 = ip.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4) return v4[1];
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.toLowerCase().split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  const prefix = groups.slice(0, 4).map((g) => parseInt(g || "0", 16));
+  prefix[3] &= 0xff00;
+  return `${prefix.map((g) => g.toString(16)).join(":")}::/56`;
+}
+
+/**
+ * 回数制限に使う接続元の識別子。IP アドレスそのものは保存せず、鍵付きのハッシュにする。
+ * Vercel は x-real-ip・x-forwarded-for を上書きするので、ブラウザから偽の値を送っても効かない
+ */
+export function clientIpHash(request: Request): string {
+  const h = request.headers;
+  const ip = (h.get("x-real-ip") ?? h.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  return createHmac("sha256", secret() ?? "").update(`ip:${ipBucket(ip)}`).digest("base64url").slice(0, 22);
+}
+
 export function verifyPlayToken(token: unknown): PlayClaims | null {
   const key = secret();
   if (!key || typeof token !== "string" || token.length > 1000) return null;
