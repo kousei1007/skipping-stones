@@ -34,7 +34,25 @@ export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return Response.json({ error: "オンラインランキングは無効です" }, { status: 503 });
 
-  const { bounces, distance, weather } = replayThrow(stage, claims, sub, secretThrowSeed(claims, sub));
+  // 記録できるのは、投げた瞬間に /api/stone-luck が答えた投擲と同じ投げ方のものだけ。
+  // 投げ方を変えて何度も送り、「5 位以内に入ったか」の成否から結果を探ることを防ぐ
+  const seed = secretThrowSeed(claims, sub);
+  const { data: reveal, error: revealError } = await supabase
+    .from("throw_reveals")
+    .select("seed")
+    .eq("session_id", claims.sid)
+    .eq("throw_index", sub.throwIndex)
+    .maybeSingle();
+  if (revealError) {
+    console.error("reveal fetch failed", revealError.message);
+    return Response.json({ error: "記録に失敗しました" }, { status: 500 });
+  }
+  if (!reveal) return Response.json({ error: "この投擲はまだ投げられていません" }, { status: 403 });
+  // seed が null の行は seed 列を追加する前に作られたもの（トークンの期限が切れる 12 時間後には残らない）
+  if (reveal.seed !== null && Number(reveal.seed) !== seed)
+    return Response.json({ error: "投げた瞬間の投げ方と一致しません" }, { status: 403 });
+
+  const { bounces, distance, weather } = replayThrow(stage, claims, sub, seed);
 
   // 上位に入らない記録は保存しない（画面で隠すだけでなく、サーバーでも確かめる）
   const { data: top, error: topError } = await supabase

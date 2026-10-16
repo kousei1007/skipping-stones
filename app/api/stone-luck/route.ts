@@ -27,11 +27,13 @@ export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return Response.json({ error: "オンラインランキングは無効です" }, { status: 503 });
 
-  const { error } = await supabase.from("throw_reveals").insert({ session_id: claims.sid, throw_index: sub.throwIndex });
+  // 種を記録しておき、/api/scores は「ここで答えた投げ方」と同じ投げ方の記録だけを受け付ける
+  const seed = secretThrowSeed(claims, sub);
+  const { error } = await supabase.from("throw_reveals").insert({ session_id: claims.sid, throw_index: sub.throwIndex, seed });
   if (error) {
     if (error.code === "23505") return Response.json({ error: "この投擲はすでに投げられています" }, { status: 409 });
     console.error("throw reveal insert failed", error.message);
     return Response.json({ error: "通信に失敗しました" }, { status: 500 });
   }
-  return Response.json({ seed: secretThrowSeed(claims, sub) });
+  return Response.json({ seed });
 }

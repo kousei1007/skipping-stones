@@ -80,12 +80,27 @@ const isInt = (v: unknown, min: number, max: number): v is number => Number.isIn
 const isNum = (v: unknown, min: number, max: number): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
 
+/**
+ * 1 プレイの投擲番号の上限。人が遊ぶ回数としては十分に大きく、
+ * 天候の再計算（投擲番号の回数だけ繰り返す）と、種を問い合わせられる回数を抑える
+ */
+export const MAX_THROW_INDEX = 2000;
+
+/**
+ * 追加で見つけた石の通し番号の上限（含む）。
+ * 追加した石の番号は ADD_SERIAL_BASE から、置いた順に隙間なく振る（GameRoot の addedCount）。
+ * 追加は「追加後に上限を超えるなら不可」で、投げた石は河原から減るので、
+ * throwIndex 回投げた時点までに追加で置ける石は maxStones - initialStones + throwIndex 個以内。
+ */
+const maxAddedSerial = (stage: StageDef, throwIndex: number) =>
+  ADD_SERIAL_BASE + stage.maxStones - stage.initialStones + throwIndex + stage.addBatch;
+
 /** 送られてきた投擲が、ゲーム内で実際に可能な範囲か */
 export function validateSubmission(stage: StageDef, s: ThrowSubmission): string | null {
+  if (!isInt(s.throwIndex, 0, MAX_THROW_INDEX)) return "投擲番号が不正です";
   const serialOk =
-    isInt(s.stoneSerial, 0, stage.initialStones - 1) || isInt(s.stoneSerial, ADD_SERIAL_BASE, ADD_SERIAL_BASE + 10_000_000);
+    isInt(s.stoneSerial, 0, stage.initialStones - 1) || isInt(s.stoneSerial, ADD_SERIAL_BASE, maxAddedSerial(stage, s.throwIndex));
   if (!serialOk) return "石が不正です";
-  if (!isInt(s.throwIndex, 0, 100_000)) return "投擲番号が不正です";
   if (!isNum(s.originX, -MOVE_RANGE, MOVE_RANGE)) return "立ち位置が不正です";
   if (!isNum(s.elevationDeg, 0, THROW_LIMITS.elevationMax)) return "角度が不正です";
   if (!isNum(s.yawDeg, -THROW_LIMITS.yaw, THROW_LIMITS.yaw)) return "向きが不正です";

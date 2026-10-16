@@ -74,6 +74,9 @@ export default function PowerGauge({ onComplete, onBack }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // 「角度を変える」などほかのボタンにフォーカスがあるときは、そのボタンの操作（Space / Enter）を奪わない
+      const target = e.target instanceof Element ? e.target.closest("button") : null;
+      if (target && !target.hasAttribute("data-gauge-stop")) return;
       if (e.code === "Space" || e.code === "Enter") {
         e.preventDefault();
         if (!e.repeat) stop(e.timeStamp);
@@ -103,7 +106,7 @@ export default function PowerGauge({ onComplete, onBack }: Props) {
             </div>
           ))}
         </div>
-        <button className="btn btn--filled stop-btn" onPointerDown={(e) => stop(e.timeStamp)} disabled={stopped}>
+        <button className="btn btn--filled stop-btn" data-gauge-stop onPointerDown={(e) => stop(e.timeStamp)} disabled={stopped}>
           {values.length < GAUGE_ROUNDS ? `ストップ（${values.length + 1}/${GAUGE_ROUNDS}）` : "投げる！"}
         </button>
         <span className="body-s muted">

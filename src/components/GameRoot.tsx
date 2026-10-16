@@ -69,7 +69,7 @@ export default function GameRoot() {
 
   const onFlightEndRef = useRef<() => void>(() => {});
   // 今のプレイの種（オンラインならサーバーの署名付き）と、何投目・何回追加したか
-  const playRef = useRef<(PlaySession & { throwIndex: number; addCount: number }) | null>(null);
+  const playRef = useRef<(PlaySession & { throwIndex: number; addedCount: number }) | null>(null);
   const lastThrowRef = useRef<ThrowSubmission | null>(null);
   /** 今の投擲の乱数をサーバーが決めたか（決めていない投擲はオンラインに記録しない） */
   const serverLuckRef = useRef(false);
@@ -159,7 +159,7 @@ export default function GameRoot() {
   const enterStage = useCallback((id: StageId) => {
     setPhase("loading");
     startPlay(id).then((play) => window.setTimeout(() => {
-      playRef.current = { ...play, throwIndex: 0, addCount: 0 };
+      playRef.current = { ...play, throwIndex: 0, addedCount: 0 };
       const scene = sceneRef.current;
       const st = getStage(id);
       const c = conditionsAt(st, play.condSeed, 0);
@@ -196,13 +196,14 @@ export default function GameRoot() {
   const addStones = useCallback(() => {
     const play = playRef.current;
     if (!play || !canAddStones(stage, stones.length)) return;
-    // 今いる場所の周りに追加する（石の通し番号は追加ごとに別の範囲）
-    const added = spawnStones(stage, stage.addBatch, stones, play.fieldSeed, throwX, ADD_SERIAL_BASE + play.addCount * stage.addBatch);
-    play.addCount += 1;
+    // 今いる場所の周りに追加する（石の通し番号は、これまでに追加で置いた数の続きから隙間なく振る）
+    const added = spawnStones(stage, stage.addBatch, stones, play.fieldSeed, throwX, ADD_SERIAL_BASE + play.addedCount);
     if (added.length === 0) {
       setToast("河原に石を置く場所がありません");
       return;
     }
+    // 置けた数だけ番号を進める（サーバーは番号の上限を「実際に増やせる数」から検査する）
+    play.addedCount += added.length;
     setStones([...stones, ...added]);
     setToast(`石を${added.length}個見つけました`);
   }, [stage, stones, throwX]);

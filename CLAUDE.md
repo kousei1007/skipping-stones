@@ -33,8 +33,8 @@ npx tsc src/game/physics.ts src/game/conditions.ts --outDir <tmp> --module commo
 - `src/three/` — three.js の描画。`GameScene.ts` がシーン全体とカメラを管理し、React からは `setStage` / `setStones` / `setMode` / `setThrow` / `startFlight` で操作する
 - `src/components/` — UI。`GameRoot.tsx` が画面の状態遷移（title → select → position → aim → power → flight → result）を持つ
 - `src/lib/` — スコア保存。`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` があれば Supabase、なければ localStorage。`playToken.ts`・`supabaseAdmin.ts` はサーバー専用
-- `app/api/session`・`app/api/stone-luck`・`app/api/scores` — ランキングの不正対策。サーバーがプレイの種（河原・天候）に署名して発行し、記録時は投げ方だけを受け取って `src/game/verify.ts` の `replayThrow` で跳ねた回数を計算し直してから書き込む。投擲の乱数の種は `stone-luck` が投げた瞬間に秘密の鍵から決めて返す（同じ投擲には 1 回だけ。`throw_reveals` に記録）。名前は同じプレイの中では最初に記録したものに固定（端末でも一度記録した名前は変えられない）
-- `supabase/migrations/` — `scores` テーブルと RLS（閲覧は誰でも可。書き込みはサーバーの service_role だけ）
+- `app/api/session`・`app/api/stone-luck`・`app/api/scores` — ランキングの不正対策。サーバーがプレイの種（河原・天候）に署名して発行し、記録時は投げ方だけを受け取って `src/game/verify.ts` の `replayThrow` で跳ねた回数を計算し直してから書き込む。投擲の乱数の種は `stone-luck` が投げた瞬間に秘密の鍵から決めて返す（同じ投擲には 1 回だけ。`throw_reveals` に投げ方から決めた種ごと記録し、`/api/scores` は記録した種と一致する投げ方の投擲だけ受け付ける）。名前は同じプレイの中では最初に記録したものに固定（端末でも一度記録した名前は変えられない）
+- `supabase/migrations/` — `scores` テーブルと RLS（閲覧は誰でも可だが読める列はランキング表示用だけ。書き込みはサーバーの service_role だけ）
 
 ## 仕様上の数値
 
